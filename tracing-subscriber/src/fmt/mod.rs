@@ -289,21 +289,19 @@ use tracing_core::{collect::Interest, span, Event, Metadata};
 mod fmt_subscriber;
 pub mod format;
 pub mod time;
-pub mod writer;
-pub use fmt_subscriber::{FmtContext, FormattedFields, Subscriber};
-
 use crate::subscribe::Subscribe as _;
+use crate::writer::{MakeWriter, TestWriter};
 use crate::{
     filter::LevelFilter,
     registry::{LookupSpan, Registry},
     reload, subscribe,
 };
+pub use fmt_subscriber::{FmtContext, FormattedFields, Subscriber};
 
 #[doc(inline)]
 pub use self::{
     format::{format, FormatEvent, FormatFields},
     time::time,
-    writer::{MakeWriter, TestWriter},
 };
 
 /// A `Collector` that logs formatted representations of `tracing` events.
@@ -1079,7 +1077,7 @@ impl<N, E, F, W> CollectorBuilder<N, E, F, W> {
     ///
     /// [capturing]:
     /// https://doc.rust-lang.org/book/ch11-02-running-tests.html#showing-function-output
-    /// [`TestWriter`]: writer::TestWriter
+    /// [`TestWriter`]: crate::writer::TestWriter
     pub fn with_test_writer(self) -> CollectorBuilder<N, E, F, TestWriter> {
         CollectorBuilder {
             filter: self.filter,
@@ -1151,79 +1149,11 @@ mod test {
         filter::LevelFilter,
         fmt::{
             format::{self, Format},
-            time,
-            writer::MakeWriter,
-            Collector,
+            time, Collector,
         },
-    };
-    use std::{
-        io,
-        sync::{Arc, Mutex, MutexGuard, TryLockError},
+        writer::test::MockMakeWriter,
     };
     use tracing_core::dispatch::Dispatch;
-
-    pub(crate) struct MockWriter {
-        buf: Arc<Mutex<Vec<u8>>>,
-    }
-
-    impl MockWriter {
-        pub(crate) fn new(buf: Arc<Mutex<Vec<u8>>>) -> Self {
-            Self { buf }
-        }
-
-        pub(crate) fn map_error<Guard>(err: TryLockError<Guard>) -> io::Error {
-            match err {
-                TryLockError::WouldBlock => io::Error::from(io::ErrorKind::WouldBlock),
-                TryLockError::Poisoned(_) => io::Error::from(io::ErrorKind::Other),
-            }
-        }
-
-        pub(crate) fn buf(&self) -> io::Result<MutexGuard<'_, Vec<u8>>> {
-            self.buf.try_lock().map_err(Self::map_error)
-        }
-    }
-
-    impl io::Write for MockWriter {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.buf()?.write(buf)
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            self.buf()?.flush()
-        }
-    }
-
-    #[derive(Clone, Default)]
-    pub(crate) struct MockMakeWriter {
-        buf: Arc<Mutex<Vec<u8>>>,
-    }
-
-    impl MockMakeWriter {
-        pub(crate) fn new(buf: Arc<Mutex<Vec<u8>>>) -> Self {
-            Self { buf }
-        }
-
-        pub(crate) fn buf(&self) -> MutexGuard<'_, Vec<u8>> {
-            self.buf.lock().unwrap()
-        }
-
-        pub(crate) fn get_string(&self) -> String {
-            let mut buf = self.buf.lock().expect("lock shouldn't be poisoned");
-            let string = std::str::from_utf8(&buf[..])
-                .expect("formatter should not have produced invalid utf-8")
-                .to_owned();
-            buf.clear();
-            string
-        }
-    }
-
-    impl<'a> MakeWriter<'a> for MockMakeWriter {
-        type Writer = MockWriter;
-
-        fn make_writer(&'a self) -> Self::Writer {
-            MockWriter::new(self.buf.clone())
-        }
-    }
 
     #[test]
     fn impls() {

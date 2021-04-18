@@ -10,8 +10,9 @@ use std::{
 
 /// A type that can create [`io::Write`] instances.
 ///
-/// `MakeWriter` is used by [`fmt::Collector`] or [`fmt::Subscriber`] to print
-/// formatted text representations of [`Event`]s.
+/// `MakeWriter` is mainly used by [`fmt::Collector`] or [`fmt::Subscriber`] to print
+/// formatted text representations of [`Event`]s. However, you also can use it in your
+/// own custom subscriber.
 ///
 /// This trait is already implemented for function pointers and
 /// immutably-borrowing closures that return an instance of [`io::Write`], such
@@ -83,8 +84,8 @@ use std::{
 /// ```
 ///
 /// [`io::Write`]: std::io::Write
-/// [`fmt::Collector`]: super::super::fmt::Collector
-/// [`fmt::Subscriber`]: super::super::fmt::Subscriber
+/// [`fmt::Collector`]: crate::fmt::Collector
+/// [`fmt::Subscriber`]: crate::fmt::Subscriber
 /// [`Event`]: tracing_core::event::Event
 /// [`io::stdout`]: std::io::stdout()
 /// [`io::stderr`]: std::io::stderr()
@@ -106,8 +107,8 @@ pub trait MakeWriter<'a> {
     /// [`MakeWriter`] to improve performance.
     ///
     /// [`Writer`]: MakeWriter::Writer
-    /// [`fmt::Subscriber`]: super::super::fmt::Subscriber
-    /// [`fmt::Collector`]: super::super::fmt::Collector
+    /// [`fmt::Subscriber`]: crate::fmt::Subscriber
+    /// [`fmt::Collector`]: crate::fmt::Collector
     /// [`io::Write`]: std::io::Write
     fn make_writer(&'a self) -> Self::Writer;
 }
@@ -138,8 +139,8 @@ pub struct MutexGuardWriter<'a, W>(MutexGuard<'a, W>);
 /// Writing to [`io::stdout`] and [`io::stderr`] produces the same results as using
 /// [`libtest`'s `--nocapture` option][nocapture] which may make the results look unreadable.
 ///
-/// [`fmt::Collector`]: super::Collector
-/// [`fmt::Subscriber`]: super::Subscriber
+/// [`fmt::Collector`]: crate::fmt::Collector
+/// [`fmt::Subscriber`]: crate::fmt::Subscriber
 /// [capturing]: https://doc.rust-lang.org/book/ch11-02-running-tests.html#showing-function-output
 /// [nocapture]: https://doc.rust-lang.org/cargo/commands/cargo-test.html
 /// [`io::stdout`]: std::io::stdout()
@@ -161,7 +162,7 @@ pub struct TestWriter {
 ///
 /// ```rust
 /// # use tracing::Collect;
-/// # use tracing_subscriber::fmt::writer::BoxMakeWriter;
+/// # use tracing_subscriber::writer::BoxMakeWriter;
 ///
 /// fn dynamic_writer(use_stderr: bool) -> impl Collect {
 ///     let writer = if use_stderr {
@@ -308,14 +309,79 @@ where
 }
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
     use super::MakeWriter;
     use crate::fmt::format::Format;
-    use crate::fmt::test::{MockMakeWriter, MockWriter};
     use crate::fmt::Collector;
-    use std::sync::{Arc, Mutex};
+    use std::{
+        io,
+        sync::{Arc, Mutex, MutexGuard, TryLockError},
+    };
     use tracing::error;
     use tracing_core::dispatch::{self, Dispatch};
+
+    pub(crate) struct MockWriter {
+        buf: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl MockWriter {
+        pub(crate) fn new(buf: Arc<Mutex<Vec<u8>>>) -> Self {
+            Self { buf }
+        }
+
+        pub(crate) fn map_error<Guard>(err: TryLockError<Guard>) -> io::Error {
+            match err {
+                TryLockError::WouldBlock => io::Error::from(io::ErrorKind::WouldBlock),
+                TryLockError::Poisoned(_) => io::Error::from(io::ErrorKind::Other),
+            }
+        }
+
+        pub(crate) fn buf(&self) -> io::Result<MutexGuard<'_, Vec<u8>>> {
+            self.buf.try_lock().map_err(Self::map_error)
+        }
+    }
+
+    impl io::Write for MockWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.buf()?.write(buf)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            self.buf()?.flush()
+        }
+    }
+
+    #[derive(Clone, Default)]
+    pub(crate) struct MockMakeWriter {
+        buf: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl MockMakeWriter {
+        pub(crate) fn new(buf: Arc<Mutex<Vec<u8>>>) -> Self {
+            Self { buf }
+        }
+
+        pub(crate) fn buf(&self) -> MutexGuard<'_, Vec<u8>> {
+            self.buf.lock().unwrap()
+        }
+
+        pub(crate) fn get_string(&self) -> String {
+            let mut buf = self.buf.lock().expect("lock shouldn't be poisoned");
+            let string = std::str::from_utf8(&buf[..])
+                .expect("formatter should not have produced invalid utf-8")
+                .to_owned();
+            buf.clear();
+            string
+        }
+    }
+
+    impl<'a> MakeWriter<'a> for MockMakeWriter {
+        type Writer = MockWriter;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            MockWriter::new(self.buf.clone())
+        }
+    }
 
     fn test_writer<T>(make_writer: T, msg: &str, buf: &Mutex<Vec<u8>>)
     where

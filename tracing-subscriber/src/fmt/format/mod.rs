@@ -1251,7 +1251,8 @@ impl Display for TimingDisplay {
 
 #[cfg(test)]
 pub(super) mod test {
-    use crate::fmt::{test::MockMakeWriter, time::FormatTime};
+    use crate::fmt::time::FormatTime;
+    use crate::writer::test::MockMakeWriter;
     use tracing::{
         self,
         collect::with_default,

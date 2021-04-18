@@ -499,7 +499,8 @@ impl<'a> fmt::Debug for WriteAdaptor<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::fmt::{format::FmtSpan, test::MockMakeWriter, time::FormatTime, CollectorBuilder};
+    use crate::fmt::{format::FmtSpan, time::FormatTime, CollectorBuilder};
+    use crate::writer::test::MockMakeWriter;
 
     use tracing::{self, collect::with_default};
 

@@ -27,6 +27,8 @@
 //! - `fmt`: Enables the [`fmt`] module, which provides a subscriber
 //!   implementation for printing formatted representations of trace events.
 //!   Enabled by default.
+//! - `writer`: Enables the [`writer`] module, which abstract the creation of `io::Write` instances.
+//!   Enabled by default in `fmt` feature.
 //! - `ansi`: Enables `fmt` support for ANSI terminal colors. Enabled by
 //!   default.
 //! - `registry`: enables the [`registry`] module. Enabled by default.
@@ -118,6 +120,9 @@ pub mod subscribe;
 pub(crate) mod sync;
 pub(crate) mod thread;
 pub mod util;
+#[cfg(feature = "writer")]
+#[cfg_attr(docsrs, doc(cfg(feature = "writer")))]
+pub mod writer;
 
 #[cfg(feature = "env-filter")]
 #[cfg_attr(docsrs, doc(cfg(feature = "env-filter")))]
@@ -128,6 +133,10 @@ pub use subscribe::Subscribe;
 cfg_feature!("fmt", {
     pub use fmt::fmt;
     pub use fmt::Subscriber as FmtSubscriber;
+});
+
+cfg_feature!("writer", {
+    pub use writer::{MakeWriter, TestWriter};
 });
 
 cfg_feature!("registry", {

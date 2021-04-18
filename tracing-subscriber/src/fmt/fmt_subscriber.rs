@@ -1,8 +1,9 @@
 use crate::{
     field::RecordFields,
-    fmt::{format, FormatEvent, FormatFields, MakeWriter, TestWriter},
+    fmt::{format, FormatEvent, FormatFields},
     registry::{LookupSpan, SpanRef},
     subscribe::{self, Context, Scope},
+    writer::{MakeWriter, TestWriter},
 };
 use format::{FmtSpan, TimingDisplay};
 use std::{
@@ -137,7 +138,7 @@ impl<S, N, E, W> Subscriber<S, N, E, W> {
     /// # let _ = fmt_subscriber.with_collector(tracing_subscriber::registry::Registry::default());
     /// ```
     ///
-    /// [`MakeWriter`]: super::writer::MakeWriter
+    /// [`MakeWriter`]: crate::writer::MakeWriter
     /// [`Subscriber`]: super::Subscriber
     pub fn with_writer<W2>(self, make_writer: W2) -> Subscriber<S, N, E, W2>
     where
@@ -173,7 +174,7 @@ impl<S, N, E, W> Subscriber<S, N, E, W> {
     /// ```
     /// [capturing]:
     /// https://doc.rust-lang.org/book/ch11-02-running-tests.html#showing-function-output
-    /// [`TestWriter`]: super::writer::TestWriter
+    /// [`TestWriter`]: crate::writer::TestWriter
     pub fn with_test_writer(self) -> Subscriber<S, N, E, TestWriter> {
         Subscriber {
             fmt_fields: self.fmt_fields,
@@ -862,9 +863,9 @@ mod test {
         self,
         format::{self, test::MockTime, Format},
         subscribe::Subscribe as _,
-        test::MockMakeWriter,
         time,
     };
+    use crate::writer::test::MockMakeWriter;
     use crate::Registry;
     use format::FmtSpan;
     use regex::Regex;
